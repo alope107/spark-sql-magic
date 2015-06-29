@@ -3,7 +3,9 @@ from StringIO import StringIO
 import sys
 
 class PrettyDataFrame(DataFrame):
-    """A data frame that's pretty!"""
+    """A pyspark DataFrame that pretty-prints.
+    
+    Uses the show() method of the base DataFrame."""
     
     def __init__(self, base):
         super(PrettyDataFrame, self).__init__(base._jdf, base.sql_ctx)

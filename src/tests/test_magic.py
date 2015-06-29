@@ -2,6 +2,7 @@ from nose.tools import raises, with_setup, assert_equals
 from sparksql.magic import SparkSqlMagic
 from pyspark import SQLContext
 from pyspark.sql import DataFrame
+import os
 
 ip = get_ipython()
 sqlcon = None
@@ -12,12 +13,35 @@ class DummyCtx:
 
 class DummySQLContext(SQLContext):
     query = None
+    read = None
+    df = None
     def __init__(self):
-        pass
+        self.read = DummyLoader()
+    
     def sql(self, query):
         self.query = query
         sql_ctx = DummyCtx()
-        return DataFrame("dummy", sql_ctx)
+        self.df = DummyDataFrame(None, sql_ctx)
+        return self.df
+    
+
+class DummyDataFrame(DataFrame):
+    table_name = None
+    def __init__(self, jdf, sql_ctx):
+        self._jdf = jdf
+        self.sql_ctx = sql_ctx
+    def registerAsTable(self, table_name):
+        self.table_name = table_name
+
+class DummyLoader():
+    fname = None
+    form = None
+    df = None
+    def load(self, fname, format=None):
+        self.fname = fname
+        self.form = format
+        self.df = DummyDataFrame(None, DummyCtx())
+        return self.df
 
 def setup():
     global sqlcon, sqlcon2
@@ -59,6 +83,41 @@ def test_magic_parses_context_argument_correctly():
     ip.user_ns["sqlcon"] = sqlcon
     ip.user_ns["sqlcon2"] = sqlcon2
     args = "-s sqlcon2 "
-    query = "DROP * FROM TABLE"
+    query = "SELECT * FROM TABLE"
     ip.run_line_magic('sparksql', args + query)
     assert_equals(query, sqlcon2.query)
+
+@with_setup(_setup, _teardown)
+def test_load_json():
+    ip.user_ns["sqlcon"] = sqlcon
+    name = "people"
+    form = "json"
+    path = "/foo/bar/"
+    full_name = path + name + "." + form
+    args = "-j " + full_name + " "
+    query = "SELECT * FROM people"
+
+    print args+query
+    ip.run_line_magic('sparksql', args + query)
+
+    assert_equals(full_name, sqlcon.read.fname)
+    assert_equals(form, sqlcon.read.form)
+    assert_equals(name, sqlcon.read.df.table_name)
+
+@with_setup(_setup, _teardown)
+def test_load_parquet():
+    ip.user_ns["sqlcon"] = sqlcon
+    name = "people"
+    form = "parquet"
+    path = "/foo/bar/"
+    full_name = path + name + "." + form
+    args = "-p " + full_name + " "
+    query = "SELECT * FROM people"
+
+    print args+query
+    ip.run_line_magic('sparksql', args + query)
+
+    assert_equals(full_name, sqlcon.read.fname)
+    assert_equals(form, sqlcon.read.form)
+    assert_equals(name, sqlcon.read.df.table_name)
+    
