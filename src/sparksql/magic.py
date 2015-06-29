@@ -7,7 +7,10 @@ from prettyDataFrame import PrettyDataFrame
 
 @magics_class
 class SparkSqlMagic(Magics):
-    """Does magic"""
+    """Runs SQL statement through Spark using provided SQLContext.
+
+    Provides the %sparksql magic.
+    """
 
     context = None
 
@@ -20,9 +23,22 @@ class SparkSqlMagic(Magics):
     @argument('sql', type=str, nargs='+', help='SQL to execute!')
     @needs_local_scope
     @line_magic('sparksql')
-    @cell_magic('sparksql')
+    #@cell_magic('sparksql')
     def execute(self, line, cell = '', local_ns={}):
-        """Executes some sql through spark"""
+        """Runs a SQL statement through Spark using provided SQLContext.
+
+        This magic will use the SQLContext specified using the -s argument.
+        If none is provided, the magic will search the user namespace fo a
+        SQLContext. If the magic finds exactly one SQLContext, it will be used.
+        If there are multiple SQLContexts, one will need to be specified.
+        This magic returns a pretty printing pyspark DataFrame.
+
+        Examples::
+            
+            %sparksql -s context SHOW TABLES
+
+            %sparksql SELECT * FROM mytable
+        """
 
 
         args = parse_argstring(self.execute, line)
@@ -37,7 +53,6 @@ class SparkSqlMagic(Magics):
                 self.context = new_context
         elif self.context is None: 
             # Search for context
-            #contexts = find_insts(local_ns, SQLContext)
             contexts = find_insts(self.shell.user_ns, SQLContext)
             if len(contexts) == 0:
                 raise ValueError("No SQLContext specified with -s and could not find one in local namespace")
