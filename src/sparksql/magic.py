@@ -25,10 +25,9 @@ class SparkSqlMagic(Magics):
         """Executes some sql through spark"""
 
 
-        print "***********GOT LOCAL_NS*************" + str(local_ns)
         args = parse_argstring(self.execute, line)
         new_context_name = args.sqlcontext
-        new_context = local_ns.get(new_context_name)
+        new_context = self.shell.user_ns.get(new_context_name)
         sql = ' '.join(args.sql)
         
         if new_context_name is not None:
@@ -38,11 +37,13 @@ class SparkSqlMagic(Magics):
                 self.context = new_context
         elif self.context is None: 
             # Search for context
-            contexts = find_insts(local_ns, SQLContext)
+            #contexts = find_insts(local_ns, SQLContext)
+            contexts = find_insts(self.shell.user_ns, SQLContext)
             if len(contexts) == 0:
                 raise ValueError("No SQLContext specified with -s and could not find one in local namespace")
             elif len(contexts) == 1:
                 self.context = contexts.values()[0]
+                print self.context
             elif len(contexts) > 1:
                 raise ValueError("SQLContext must be specified with -s when there are multiple SQLcontexts in the local namespace")
 
