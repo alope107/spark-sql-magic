@@ -19,3 +19,11 @@ class PrettyDataFrame(DataFrame):
 
         sys.stdout = oldstdout
         return newstdout.getvalue()
+
+    def _repr_html_(self):
+        #TODO render html without requiring conversion
+        #TODO css?
+        #TODO max rows
+        return self.toPandas().to_html()
+
+
