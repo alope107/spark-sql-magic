@@ -20,3 +20,7 @@ Examples:
     %sparksql -j /foo/bar/qaz.json SELECT * FROM qaz
 
     %sparksql -p example.parquet
+
+    %%sparksql -s context
+    DROP TABLE mytable;
+    SHOW TABLES;

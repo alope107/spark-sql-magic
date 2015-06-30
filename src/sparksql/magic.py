@@ -18,7 +18,9 @@ class SparkSqlMagic(Magics):
     def __init__(self, shell):
         Magics.__init__(self, shell=shell)
 
-    ##TODO fix help doc, currently has execute shown for usage
+    #TODO fix help doc, currently has execute shown for usage
+    #TODO auto-detect file format?
+    #TODO export
     @magic_arguments()
     @argument('-s', '--sqlcontext', help='SQLContext to use')
     @argument('-j', '--json', help='JSON file to read as table')
@@ -34,7 +36,7 @@ class SparkSqlMagic(Magics):
         SQLContext. If the magic finds exactly one SQLContext, it will be used.
         If there are multiple SQLContexts, one will need to be specified.
         This magic returns a pretty printing pyspark DataFrame.
-        The -j and -p flags ar used to load json and parquet files.
+        The -j and -p flags are used to load json and parquet files.
         The file will be loaded and registered as a table, with the table
         name inferred from the filename. Files must have .json or .parquet
         extension.
@@ -48,21 +50,51 @@ class SparkSqlMagic(Magics):
             %sparksql -j /foo/bar/qaz.json SELECT * FROM qaz
 
             %sparksql -p example.parquet
+
+            %%sparksql -s context
+            DROP TABLE mytable;
+            SHOW TABLES
         """
 
-
-        args = parse_argstring(self.execute, line)
+        command = line + " " + cell
+        args = parse_argstring(self.execute, command)
         new_context_name = args.sqlcontext
-        new_context = self.shell.user_ns.get(new_context_name)
-        sql = ' '.join(args.sql)
+        
+        statements = self.parse_sql(args.sql)
+        
         json = args.json
         parquet = args.parquet
         
+        self.find_context(new_context_name)
+
+        if json is not None:
+            self.read_file(json, "json")
+
+        if parquet is not None:
+            self.read_file(parquet, "parquet")
+
+        for statement in statements:
+            res = self.context.sql(statement)
+
+        return PrettyDataFrame(res)
+
+
+    #TODO better string manipulation
+    def parse_sql(self, command):
+        sql = ' '.join(command)
+        sql.replace("\n", " ")
+        statements = sql.split(";")
+        statements = [stmt for stmt in statements if len(stmt) > 0]
+        return statements
+
+    def find_context(self, new_context_name):
         if new_context_name is not None:
+            new_context = self.shell.user_ns.get(new_context_name)
             if new_context is None:
                 raise NameError("Could not find SQLContext '" + new_context_name + "'")
             else:
                 self.context = new_context
+        
         elif self.context is None: 
             # Search for context
             contexts = find_insts(self.shell.user_ns, SQLContext)
@@ -73,16 +105,7 @@ class SparkSqlMagic(Magics):
                 print self.context
             elif len(contexts) > 1:
                 raise ValueError("SQLContext must be specified with -s when there are multiple SQLcontexts in the local namespace")
-
-        if json is not None:
-            self.read_file(json, "json")
-
-        if parquet is not None:
-            self.read_file(parquet, "parquet")
-
-        res = self.context.sql(sql)
-
-        return PrettyDataFrame(res)
+        
 
     def read_file(self, filename, form):
         df = self.context.read.load(filename, format=form)
@@ -102,7 +125,6 @@ class SparkSqlMagic(Magics):
 
         #TODO error handling
         return m.group(1)
-        
 
 def load_ipython_extension(ip):
     ip.register_magics(SparkSqlMagic)
