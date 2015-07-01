@@ -5,6 +5,7 @@ from IPython.core.magic_arguments import (argument, magic_arguments,
 from findInst import find_insts
 from prettyDataFrame import PrettyDataFrame
 import re
+import os.path
 
 @magics_class
 class SparkSqlMagic(Magics):
@@ -101,19 +102,21 @@ class SparkSqlMagic(Magics):
                 raise ValueError("SQLContext must be specified with -s when there are multiple SQLcontexts in the local namespace")
 
     def load_file(self, filename):
-        path_data = self.parse_file_name(filename)
-        
-        df = self.context.read.load(filename, format=path_data["format"])
-        df.registerAsTable(path_data["table"])
+        table, ext = self.parse_file_name(filename)
 
-        print("Stored " + filename + " in table " + path_data["table"])
+        df = self.context.read.load(filename, format=ext)
+        #TODO check for table name collision?
+        df.registerAsTable(table)
+
+        print("Stored " + filename + " in table " + table)
 
     def parse_file_name(self, filename):
-        #TODO better file name checking
-        p = re.compile(r"([^\/\\\.]*)\.([^\/\\\.]*)$")
-        m = p.search(filename)
-        #TODO error handling / sanitization
-        return {"table" : m.group(1), "format" : m.group(2)}
+        #TODO error checking 
+        basename = os.path.basename(filename)
+        table, ext = os.path.splitext(basename)
+        #remove leading period
+        ext = ext[1:]
+        return table, ext
 
 def load_ipython_extension(ip):
-    ip.register_magics(SparkSqlMagic)
+   ip.register_magics(SparkSqlMagic)
