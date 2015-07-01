@@ -23,8 +23,7 @@ class SparkSqlMagic(Magics):
     #TODO export
     @magic_arguments()
     @argument('-s', '--sqlcontext', help='SQLContext to use')
-    @argument('-j', '--json', help='JSON file to read as table')
-    @argument('-p', '--parquet', help='Parquet file to read as table')
+    @argument('-l', '--load', help='File to read as table')
     @argument('sql', type=str, default=["SHOW", "TABLES"], nargs='*', help='SQL to execute!')
     @line_magic('sparksql')
     @cell_magic('sparksql')
@@ -36,7 +35,7 @@ class SparkSqlMagic(Magics):
         SQLContext. If the magic finds exactly one SQLContext, it will be used.
         If there are multiple SQLContexts, one will need to be specified.
         This magic returns a pretty printing pyspark DataFrame.
-        The -j and -p flags are used to load json and parquet files.
+        The -l option is used to load json and parquet files.
         The file will be loaded and registered as a table, with the table
         name inferred from the filename. Files must have .json or .parquet
         extension.
@@ -47,9 +46,9 @@ class SparkSqlMagic(Magics):
 
             %sparksql SELECT column FROM mytable
 
-            %sparksql -j /foo/bar/qaz.json SELECT * FROM qaz
+            %sparksql -l /foo/bar/qaz.json SELECT * FROM qaz
 
-            %sparksql -p example.parquet
+            %sparksql -l example.parquet
 
             %%sparksql -s context
             DROP TABLE mytable;
@@ -62,16 +61,12 @@ class SparkSqlMagic(Magics):
         
         statements = self.parse_sql(args.sql)
         
-        json = args.json
-        parquet = args.parquet
+        to_load = args.load
         
         self.find_context(new_context_name)
 
-        if json is not None:
-            self.read_file(json, "json")
-
-        if parquet is not None:
-            self.read_file(parquet, "parquet")
+        if to_load:
+            self.load_file(to_load)
 
         for statement in statements:
             res = self.context.sql(statement)
@@ -102,29 +97,23 @@ class SparkSqlMagic(Magics):
                 raise ValueError("No SQLContext specified with -s and could not find one in local namespace")
             elif len(contexts) == 1:
                 self.context = contexts.values()[0]
-                print self.context
             elif len(contexts) > 1:
                 raise ValueError("SQLContext must be specified with -s when there are multiple SQLcontexts in the local namespace")
+
+    def load_file(self, filename):
+        path_data = self.parse_file_name(filename)
         
+        df = self.context.read.load(filename, format=path_data["format"])
+        df.registerAsTable(path_data["table"])
 
-    def read_file(self, filename, form):
-        df = self.context.read.load(filename, format=form)
+        print("Stored " + filename + " in table " + path_data["table"])
 
-        table_name = self.get_table_name(filename, form)
-
-        #TODO check for table name collision?
-        df.registerAsTable(table_name)
-
-        print("Stored " + filename + " in table " + table_name)
-
-    def get_table_name(self, filename, extension):
-        #TODO much better file name checking
-        p = re.compile(r"([^\/\\\.]*)\." + extension + "$")
-        
+    def parse_file_name(self, filename):
+        #TODO better file name checking
+        p = re.compile(r"([^\/\\\.]*)\.([^\/\\\.]*)$")
         m = p.search(filename)
-
-        #TODO error handling
-        return m.group(1)
+        #TODO error handling / sanitization
+        return {"table" : m.group(1), "format" : m.group(2)}
 
 def load_ipython_extension(ip):
     ip.register_magics(SparkSqlMagic)

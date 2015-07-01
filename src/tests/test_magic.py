@@ -98,7 +98,7 @@ def test_load_json():
     form = "json"
     path = "/foo/bar/"
     full_name = path + name + "." + form
-    args = "-j " + full_name + " "
+    args = "-l " + full_name + " "
     query = "SELECT * FROM people"
 
     ip.run_line_magic('sparksql', args + query)
@@ -114,7 +114,7 @@ def test_load_parquet():
     form = "parquet"
     path = "/foo/bar/"
     full_name = path + name + "." + form
-    args = "-p " + full_name + " "
+    args = "-l " + full_name + " "
     query = "SELECT * FROM people"
 
     ip.run_line_magic('sparksql', args + query)
@@ -126,7 +126,7 @@ def test_load_parquet():
 @with_setup(_setup, _teardown)
 def test_multiple_queries_all_get_called_in_order():
     ip.user_ns["sqlcon"] = sqlcon
-    line = "-s sqlcon -j file.json"
+    line = "-s sqlcon -l file.json"
     queries = ["SELECT * FROM place",
                "DO SOMETHING WITH SOMETHING ELSE",
                "DROP TABLE do_not_delete"]
