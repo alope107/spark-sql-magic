@@ -7,6 +7,7 @@ import os
 ip = get_ipython()
 sqlcon = None
 sqlcon2 = None
+dummyframe = None
 
 class DummyCtx:
     _sc = "dummy"
@@ -15,28 +16,39 @@ class DummySQLContext(SQLContext):
     queries = []
     read = None
     df = None
-    def __init__(self):
+    def __init__(self, df):
         self.queries = []
         self.read = DummyLoader()
+        self.df = df
     
     def sql(self, query):
         
         self.queries.append(query.strip())
         
-        sql_ctx = DummyCtx()
-        self.df = DummyDataFrame(None, sql_ctx)
         return self.df
     
 
 class DummyDataFrame(DataFrame):
     table_name = None
+    write = None
     
     def __init__(self, jdf, sql_ctx):
         self._jdf = jdf
         self.sql_ctx = sql_ctx
+        self.write = DummyWriter()
     
     def registerAsTable(self, table_name):
         self.table_name = table_name
+
+class DummyWriter():
+    fname = None
+    format = None
+    def __init__(self):
+        self.fname = None
+        self.format = None
+    def save(self, fname, format=None):
+        self.fname = fname
+        self.format = format
 
 class DummyLoader():
     fname = None
@@ -50,9 +62,10 @@ class DummyLoader():
         return self.df
 
 def _setup():
-    global sqlcon, sqlcon2
-    sqlcon = DummySQLContext()
-    sqlcon2 = DummySQLContext()
+    global sqlcon, sqlcon2, dummyframe
+    dummyframe = DummyDataFrame(None, DummyCtx())
+    sqlcon = DummySQLContext(dummyframe)
+    sqlcon2 = DummySQLContext(dummyframe)
     sparksqlmagic = SparkSqlMagic(shell=ip)
     ip.register_magics(sparksqlmagic)
 
@@ -139,3 +152,17 @@ def test_multiple_queries_all_get_called_in_order():
     for i in range(len(queries)):
         assert_equals(queries[i], sqlcon.queries[i])
         
+@with_setup(_setup, _teardown)
+def test_writes_result_to_correct_file():
+    ip.user_ns["sqlcon"] = sqlcon
+    
+    file_loc = "/path/to/"
+    filename = "file"
+    ext = "json"
+    full_name = file_loc + filename + "." + ext
+    command = "-w " + full_name + " SELECT * FROM place"
+
+    ip.run_line_magic('sparksql', command)
+
+    assert_equals(full_name, dummyframe.write.fname)
+    assert_equals(ext, dummyframe.write.format)

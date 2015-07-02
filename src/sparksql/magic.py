@@ -22,9 +22,11 @@ class SparkSqlMagic(Magics):
     #TODO fix help doc, currently has execute shown for usage
     #TODO auto-detect file format?
     #TODO export
+    #TODO support for custom data sources
     @magic_arguments()
     @argument('-s', '--sqlcontext', help='SQLContext to use')
     @argument('-l', '--load', help='File to read as table')
+    @argument('-w', '--write', help='File to write output to')
     @argument('sql', type=str, default=["SHOW", "TABLES"], nargs='*', help='SQL to execute!')
     @line_magic('sparksql')
     @cell_magic('sparksql')
@@ -39,7 +41,9 @@ class SparkSqlMagic(Magics):
         The -l option is used to load json and parquet files.
         The file will be loaded and registered as a table, with the table
         name inferred from the filename. Files must have .json or .parquet
-        extension.
+        extension. The -w option is used to write the output of a query
+        to a JSON or parquet file. The output format is inferred from the 
+        file extension.
 
         Examples::
             
@@ -47,13 +51,15 @@ class SparkSqlMagic(Magics):
 
             %sparksql SELECT column FROM mytable
 
-            %sparksql -l /foo/bar/qaz.json SELECT * FROM qaz
+            %sparksql -l /path/to/input.json SELECT * FROM qaz
 
             %sparksql -l example.parquet
 
             %%sparksql -s context
             DROP TABLE mytable;
-            SHOW TABLES
+            SHOW TABLES;
+
+            %sparksql -w /path/to/output.json SELECT column, otherColumn FROM table
         """
 
         command = line + " " + cell
@@ -63,6 +69,7 @@ class SparkSqlMagic(Magics):
         statements = self.parse_sql(args.sql)
         
         to_load = args.load
+        to_write = args.write
         
         self.find_context(new_context_name)
 
@@ -71,6 +78,9 @@ class SparkSqlMagic(Magics):
 
         for statement in statements:
             res = self.context.sql(statement)
+
+        if to_write:
+            self.write_file(res, to_write)
 
         return PrettyDataFrame(res)
 
@@ -109,6 +119,10 @@ class SparkSqlMagic(Magics):
         df.registerAsTable(table)
 
         print("Stored " + filename + " in table " + table)
+
+    def write_file(self, df, filename):
+        ext = self.parse_file_name(filename)[1]
+        df.write.save(filename, format=ext)
 
     def parse_file_name(self, filename):
         #TODO error checking 
