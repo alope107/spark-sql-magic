@@ -2,7 +2,6 @@ from pyspark import SQLContext
 from IPython.core.magic import Magics, magics_class, cell_magic, line_magic, needs_local_scope
 from IPython.core.magic_arguments import (argument, magic_arguments,
     parse_argstring)
-from findInst import find_insts
 from prettyDataFrame import PrettyDataFrame
 import re
 import os.path
@@ -20,8 +19,6 @@ class SparkSqlMagic(Magics):
         Magics.__init__(self, shell=shell)
 
     #TODO fix help doc, currently has execute shown for usage
-    #TODO auto-detect file format?
-    #TODO export
     #TODO support for custom data sources
     @magic_arguments()
     @argument('-s', '--sqlcontext', help='SQLContext to use')
@@ -43,7 +40,9 @@ class SparkSqlMagic(Magics):
         name inferred from the filename. Files must have .json or .parquet
         extension. The -w option is used to write the output of a query
         to a JSON or parquet file. The output format is inferred from the 
-        file extension.
+        file extension. Python variables can be referenced by prepending their
+        identifiers with a colon. This will inject the string representation
+        of the variable into the query.
 
         Examples::
             
@@ -60,6 +59,9 @@ class SparkSqlMagic(Magics):
             SHOW TABLES;
 
             %sparksql -w /path/to/output.json SELECT column, otherColumn FROM table
+
+            myvar = 10
+            %sparksql SELECT * FROM table WHERE value < :myvar
         """
 
         command = line + " " + cell
@@ -85,13 +87,23 @@ class SparkSqlMagic(Magics):
         return PrettyDataFrame(res)
 
 
-    #TODO better string manipulation
+    #TODO better, SQL aware string manipulation
     def parse_sql(self, command):
+        command = [self.replace_var(word) for word in command]
         sql = ' '.join(command)
         sql.replace("\n", " ")
         statements = sql.split(";")
         statements = [stmt for stmt in statements if len(stmt) > 0]
         return statements
+
+    #TODO Fix ugly hacks, make SQL aware
+    #TODO block SQL injection?
+    def replace_var(self, word):
+        bound = None
+        if word[0] == ':':
+            var = word[1:]
+            bound = self.shell.user_ns.get(var, None)
+        return str(bound) if bound else word
 
     def find_context(self, new_context_name):
         if new_context_name is not None:
@@ -103,7 +115,7 @@ class SparkSqlMagic(Magics):
         
         elif self.context is None: 
             # Search for context
-            contexts = find_insts(self.shell.user_ns, SQLContext)
+            contexts = self.find_insts(self.shell.user_ns, SQLContext)
             if len(contexts) == 0:
                 raise ValueError("No SQLContext specified with -s and could not find one in local namespace")
             elif len(contexts) == 1:
@@ -115,6 +127,7 @@ class SparkSqlMagic(Magics):
         table, ext = self.parse_file_name(filename)
 
         df = self.context.read.load(filename, format=ext)
+
         #TODO check for table name collision?
         df.registerAsTable(table)
 
@@ -125,12 +138,15 @@ class SparkSqlMagic(Magics):
         df.write.save(filename, format=ext)
 
     def parse_file_name(self, filename):
-        #TODO error checking 
         basename = os.path.basename(filename)
         table, ext = os.path.splitext(basename)
+
         #remove leading period
         ext = ext[1:]
         return table, ext
+    
+    def find_insts(self, namespace, to_find):
+        return {k:v for k, v in namespace.iteritems() if isinstance(v, to_find)}
 
 def load_ipython_extension(ip):
    ip.register_magics(SparkSqlMagic)

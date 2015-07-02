@@ -166,3 +166,19 @@ def test_writes_result_to_correct_file():
 
     assert_equals(full_name, dummyframe.write.fname)
     assert_equals(ext, dummyframe.write.format)
+
+@with_setup(_setup, _teardown)
+def test_bound_variables_are_injected():
+    ip.user_ns["sqlcon"] = sqlcon
+    k1 = "table"
+    k2 = "column"
+    v1 = "table_name"
+    v2 = "column_name"
+    ip.user_ns[k1] = v1
+    ip.user_ns[k2] = v2
+
+    command = "SELECT :" + k2 + " FROM :" + k1
+
+    ip.run_line_magic('sparksql', command)
+
+    assert_equals("SELECT " + v2 + " FROM " + v1, sqlcon.queries[0])
