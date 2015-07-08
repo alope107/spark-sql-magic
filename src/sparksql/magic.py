@@ -5,6 +5,8 @@ from IPython.core.magic_arguments import (argument, magic_arguments,
 from prettyDataFrame import PrettyDataFrame
 import re
 import os.path
+import sqlparse
+from fillPlaceholder import replace
 
 @magics_class
 class SparkSqlMagic(Magics):
@@ -18,6 +20,7 @@ class SparkSqlMagic(Magics):
     def __init__(self, shell):
         Magics.__init__(self, shell=shell)
 
+    #TODO local namespace?
     #TODO fix help doc, currently has execute shown for usage
     #TODO support for custom data sources
     @magic_arguments()
@@ -68,7 +71,7 @@ class SparkSqlMagic(Magics):
         args = parse_argstring(self.execute, command)
         new_context_name = args.sqlcontext
         
-        statements = self.parse_sql(args.sql)
+        statements = self.parse_sql(args.sql, self.shell.user_ns)
         
         to_load = args.load
         to_write = args.write
@@ -87,23 +90,10 @@ class SparkSqlMagic(Magics):
         return PrettyDataFrame(res)
 
 
-    #TODO better, SQL aware string manipulation
-    def parse_sql(self, command):
-        command = [self.replace_var(word) for word in command]
+    def parse_sql(self, command, ns):
         sql = ' '.join(command)
-        sql.replace("\n", " ")
-        statements = sql.split(";")
-        statements = [stmt for stmt in statements if len(stmt) > 0]
+        statements = [replace(str(statement).rstrip(';'), ns) for statement in sqlparse.split(sql)]
         return statements
-
-    #TODO Fix ugly hacks, make SQL aware
-    #TODO block SQL injection?
-    def replace_var(self, word):
-        bound = None
-        if word[0] == ':':
-            var = word[1:]
-            bound = self.shell.user_ns.get(var, None)
-        return str(bound) if bound else word
 
     def find_context(self, new_context_name):
         if new_context_name is not None:
