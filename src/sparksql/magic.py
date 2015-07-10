@@ -7,7 +7,7 @@ import re
 import os.path
 import sqlparse
 from fillPlaceholder import replace
-
+from fileManip import load_file, write_file
 @magics_class
 class SparkSqlMagic(Magics):
     """Runs SQL statement through Spark using provided SQLContext.
@@ -15,12 +15,12 @@ class SparkSqlMagic(Magics):
     Provides the %sparksql magic.
     """
 
-    context = None
 
     def __init__(self, shell):
         Magics.__init__(self, shell=shell)
+        self.context = None
+        self.user_ns = None
 
-    #TODO local namespace?
     #TODO fix help doc, currently has execute shown for usage
     #TODO support for custom data sources
     @magic_arguments()
@@ -28,9 +28,10 @@ class SparkSqlMagic(Magics):
     @argument('-l', '--load', help='File to read as table')
     @argument('-w', '--write', help='File to write output to')
     @argument('sql', type=str, default=["SHOW", "TABLES"], nargs='*', help='SQL to execute!')
+    @needs_local_scope
     @line_magic('sparksql')
     @cell_magic('sparksql')
-    def execute(self, line, cell = ''):
+    def execute(self, line, cell = '', local_ns={}):
         """Runs a SQL statement through Spark using provided SQLContext.
 
         This magic will use the SQLContext specified using the -s argument.
@@ -67,11 +68,14 @@ class SparkSqlMagic(Magics):
             %sparksql SELECT * FROM table WHERE value < :myvar
         """
 
+        self.user_ns = self.shell.user_ns.copy()
+        self.user_ns.update(local_ns)
+
         command = line + " " + cell
         args = parse_argstring(self.execute, command)
         new_context_name = args.sqlcontext
         
-        statements = self.parse_sql(args.sql, self.shell.user_ns)
+        statements = self.parse_sql(args.sql, self.user_ns)
         
         to_load = args.load
         to_write = args.write
@@ -79,13 +83,13 @@ class SparkSqlMagic(Magics):
         self.find_context(new_context_name)
 
         if to_load:
-            self.load_file(to_load)
+            load_file(to_load, self.context)
 
         for statement in statements:
             res = self.context.sql(statement)
 
         if to_write:
-            self.write_file(res, to_write)
+            write_file(res, to_write)
 
         return PrettyDataFrame(res)
 
@@ -97,7 +101,7 @@ class SparkSqlMagic(Magics):
 
     def find_context(self, new_context_name):
         if new_context_name is not None:
-            new_context = self.shell.user_ns.get(new_context_name)
+            new_context = self.user_ns.get(new_context_name)
             if new_context is None:
                 raise NameError("Could not find SQLContext '" + new_context_name + "'")
             else:
@@ -105,7 +109,7 @@ class SparkSqlMagic(Magics):
         
         elif self.context is None: 
             # Search for context
-            contexts = self.find_insts(self.shell.user_ns, SQLContext)
+            contexts = self.find_insts(self.user_ns, SQLContext)
             if len(contexts) == 0:
                 raise ValueError("No SQLContext specified with -s and could not find one in local namespace")
             elif len(contexts) == 1:
@@ -113,28 +117,6 @@ class SparkSqlMagic(Magics):
             elif len(contexts) > 1:
                 raise ValueError("SQLContext must be specified with -s when there are multiple SQLcontexts in the local namespace")
 
-    def load_file(self, filename):
-        table, ext = self.parse_file_name(filename)
-
-        df = self.context.read.load(filename, format=ext)
-
-        #TODO check for table name collision?
-        df.registerAsTable(table)
-
-        print("Stored " + filename + " in table " + table)
-
-    def write_file(self, df, filename):
-        ext = self.parse_file_name(filename)[1]
-        df.write.save(filename, format=ext)
-
-    def parse_file_name(self, filename):
-        basename = os.path.basename(filename)
-        table, ext = os.path.splitext(basename)
-
-        #remove leading period
-        ext = ext[1:]
-        return table, ext
-    
     def find_insts(self, namespace, to_find):
         return {k:v for k, v in namespace.iteritems() if isinstance(v, to_find)}
 
