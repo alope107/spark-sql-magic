@@ -8,6 +8,8 @@ import os.path
 import sqlparse
 from fillPlaceholder import replace
 from fileManip import load_file, write_file
+from IPython.core.display import display_javascript
+
 @magics_class
 class SparkSqlMagic(Magics):
     """Runs SQL statement through Spark using provided SQLContext.
@@ -15,11 +17,11 @@ class SparkSqlMagic(Magics):
     Provides the %sparksql magic.
     """
 
-
     def __init__(self, shell):
         Magics.__init__(self, shell=shell)
         self.context = None
         self.user_ns = None
+
 
     #TODO fix help doc, currently has execute shown for usage
     #TODO support for custom data sources
@@ -121,4 +123,6 @@ class SparkSqlMagic(Magics):
         return {k:v for k, v in namespace.iteritems() if isinstance(v, to_find)}
 
 def load_ipython_extension(ip):
-   ip.register_magics(SparkSqlMagic)
+    js = "IPython.CodeCell.config_defaults.highlight_modes['magic_text/x-sql'] = {'reg':[/^%%sparksql/]};"
+    display_javascript(js, raw=True)
+    ip.register_magics(SparkSqlMagic)
